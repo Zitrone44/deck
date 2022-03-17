@@ -249,19 +249,6 @@ class ActivityManager {
 		try {
 			$event = $this->createEvent($objectType, $entity, $subject, $additionalParams, $author);
 			if ($event !== null) {
-				$json = json_encode($event->getSubjectParameters());
-				if (mb_strlen($json) > 4000) {
-					$params = json_decode(json_encode($event->getSubjectParameters()), true);
-
-					$newContent = $params['after'];
-					unset($params['before'], $params['after'], $params['card']['description']);
-
-					$params['after'] = mb_substr($newContent, 0, 2000);
-					if (mb_strlen($newContent) > 2000) {
-						$params['after'] .= '...';
-					}
-					$event->setSubject($event->getSubject(), $params);
-				}
 				$this->sendToUsers($event);
 			}
 		} catch (\Exception $e) {
@@ -410,12 +397,31 @@ class ActivityManager {
 
 		$subjectParams['author'] = $author === null ? $this->userId : $author;
 
+		$subjectParams = array_merge($subjectParams, $additionalParams);
+		$json = json_encode($subjectParams);
+		if (mb_strlen($json) > 4000) {
+			$params = json_decode(json_encode($subjectParams), true);
+
+			if ($subject === self::SUBJECT_CARD_UPDATE_DESCRIPTION && isset($params['after'])) {
+				$newContent = $params['after'];
+				unset($params['before'], $params['after'], $params['card']['description']);
+
+				$params['after'] = mb_substr($newContent, 0, 2000);
+				if (mb_strlen($newContent) > 2000) {
+					$params['after'] .= '...';
+				}
+				$subjectParams = $params;
+			} else {
+				throw new \Exception('Subject parameters too long');
+			}
+		}
+
 		$event = $this->manager->generateEvent();
 		$event->setApp('deck')
 			->setType($eventType)
 			->setAuthor($subjectParams['author'])
 			->setObject($objectType, (int)$object->getId(), $object->getTitle())
-			->setSubject($subject, array_merge($subjectParams, $additionalParams))
+			->setSubject($subject, $subjectParams)
 			->setTimestamp(time());
 
 		if ($message !== null) {
